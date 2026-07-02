@@ -63,9 +63,10 @@ private Q_SLOTS:
 	void groupByChanged();
 	void libraryAlbumSortChanged();
 	void albumAlbumSortChanged();
-	void showArtistImagesChanged(bool u);
-	void updateToPlayQueue(const QModelIndex& idx, bool replace);
-	void addRandomAlbum();
+    void showArtistImagesChanged(bool u);
+    void updateToPlayQueue(const QModelIndex& idx, bool replace);
+    void addRandomAlbum();
+    void openContainingFolder();
 
 private:
 	void setView(int v) override;
@@ -77,7 +78,8 @@ private:
 	QAction* viewAction;
 	QAction* showArtistImagesAction;
 	QAction* libraryAlbumSortAction;
-	QAction* albumAlbumSortAction;
+    QAction* albumAlbumSortAction;
+    Action* openInFileManagerAction;
 };
 
 #endif

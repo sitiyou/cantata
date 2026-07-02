@@ -32,8 +32,11 @@
 #include "support/actioncollection.h"
 #include "support/messagebox.h"
 #include "widgets/genrecombo.h"
+#include "widgets/icons.h"
 #include "widgets/menubutton.h"
+#include <QDesktopServices>
 #include <QRandomGenerator>
+#include <QUrl>
 
 LibraryPage::LibraryPage(QWidget* p)
 	: SinglePageWidget(p)
@@ -44,9 +47,11 @@ LibraryPage::LibraryPage(QWidget* p)
 	connect(MPDConnection::self(), SIGNAL(updatedLibrary()), view, SLOT(updated()));
 	connect(MPDConnection::self(), SIGNAL(updatingDatabase()), view, SLOT(updating()));
 	connect(MPDConnection::self(), SIGNAL(updatedDatabase()), view, SLOT(updated()));
-	connect(view, SIGNAL(itemsSelected(bool)), this, SLOT(controlActions()));
-	connect(view, SIGNAL(doubleClicked(const QModelIndex&)), this, SLOT(itemDoubleClicked(const QModelIndex&)));
-	view->setModel(MpdLibraryModel::self());
+    connect(view, SIGNAL(itemsSelected(bool)), this, SLOT(controlActions()));
+    connect(view, SIGNAL(doubleClicked(const QModelIndex&)), this, SLOT(itemDoubleClicked(const QModelIndex&)));
+    openInFileManagerAction = new Action(Icon::fa(fa::fa_solid, fa::fa_folder_open), tr("Open In File Manager"), this);
+    connect(openInFileManagerAction, SIGNAL(triggered()), SLOT(openContainingFolder()));
+    view->setModel(MpdLibraryModel::self());
 	connect(MpdLibraryModel::self(), SIGNAL(modelReset()), this, SLOT(modelReset()));
 
 	view->allowCategorized();
@@ -91,8 +96,9 @@ LibraryPage::LibraryPage(QWidget* p)
 	genreCombo->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
 	init(ReplacePlayQueue | AppendToPlayQueue, QList<QWidget*>() << menu << genreCombo);
 	connect(genreCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(doSearch()));
-	view->addAction(StdActions::self()->addToStoredPlaylistAction);
-	view->addAction(CustomActions::self());
+    view->addAction(StdActions::self()->addToStoredPlaylistAction);
+    view->addAction(CustomActions::self());
+    view->addAction(openInFileManagerAction);
 #ifdef TagLib_FOUND
 #ifdef ENABLE_DEVICES_SUPPORT
 	view->addAction(StdActions::self()->copyToDeviceAction);
@@ -427,6 +433,32 @@ void LibraryPage::addRandomAlbum()
 	}
 }
 
+void LibraryPage::openContainingFolder()
+{
+    const QModelIndexList selected = view->selectedIndexes(false);
+    if (1 != selected.size()) {
+        return;
+    }
+    SqlLibraryModel::Item* item = static_cast<SqlLibraryModel::Item*>(selected.at(0).internalPointer());
+    if (SqlLibraryModel::T_Track != item->getType()) {
+        return;
+    }
+    const Song& song = item->getSong();
+    QString dir;
+    if (song.isLocalFile()) {
+        dir = song.getDir();
+    }
+    else if (song.isCantataStream()) {
+        dir = Utils::getDir(song.localPath());
+    }
+    else if (!song.isNonMPD() && MPDConnection::self()->getDetails().dirReadable) {
+        dir = MPDConnection::self()->getDetails().dir + song.getDir();
+    }
+    if (!dir.isEmpty()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    }
+}
+
 void LibraryPage::doSearch()
 {
 	MpdLibraryModel::self()->search(view->searchText(),
@@ -453,14 +485,29 @@ void LibraryPage::controlActions()
 #endif
 #endif// TagLib_FOUND
 
-	if (1 == selected.count()) {
-		SqlLibraryModel::Item* item = static_cast<SqlLibraryModel::Item*>(selected.at(0).internalPointer());
-		SqlLibraryModel::Type type = item->getType();
-		StdActions::self()->setCoverAction->setEnabled((SqlLibraryModel::T_Artist == type /* && !static_cast<MusicLibraryItemArtist *>(item)->isComposer()*/) || SqlLibraryModel::T_Album == type);
-	}
-	else {
-		StdActions::self()->setCoverAction->setEnabled(false);
-	}
+    if (1 == selected.count()) {
+        SqlLibraryModel::Item* item = static_cast<SqlLibraryModel::Item*>(selected.at(0).internalPointer());
+        SqlLibraryModel::Type type = item->getType();
+        StdActions::self()->setCoverAction->setEnabled((SqlLibraryModel::T_Artist == type /* && !static_cast<MusicLibraryItemArtist *>(item)->isComposer()*/) || SqlLibraryModel::T_Album == type);
+    }
+    else {
+        StdActions::self()->setCoverAction->setEnabled(false);
+    }
+
+    if (1 == selected.count()) {
+        SqlLibraryModel::Item* item = static_cast<SqlLibraryModel::Item*>(selected.at(0).internalPointer());
+        if (SqlLibraryModel::T_Track == item->getType()) {
+            const Song& s = item->getSong();
+            openInFileManagerAction->setEnabled(!s.isStandardStream() && !s.isCdda() && !s.isFromOnlineService() &&
+                                               (s.isLocalFile() || MPDConnection::self()->getDetails().dirReadable));
+        }
+        else {
+            openInFileManagerAction->setEnabled(false);
+        }
+    }
+    else {
+        openInFileManagerAction->setEnabled(false);
+    }
 
 	bool allowRandomAlbum = isVisible() && !selected.isEmpty();
 	if (allowRandomAlbum) {
