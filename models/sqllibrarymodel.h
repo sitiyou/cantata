@@ -109,17 +109,19 @@ public:
 	class AlbumItem : public CollectionItem {
 	public:
 		AlbumItem(const QString& ar, const QString& i, const QString& txt = QString(), const QString& sub = QString(),
-		          const QString& tSub = QString(), CollectionItem* p = nullptr, int cat = -1)
-			: CollectionItem(T_Album, i, txt, sub, p), artistId(ar), titleSub(tSub), category(cat) {}
+		          const QString& tSub = QString(), CollectionItem* p = nullptr, int cat = -1, const QString& d = QString())
+			: CollectionItem(T_Album, i, txt, sub, p), artistId(ar), titleSub(tSub), dir(d), category(cat) {}
 		~AlbumItem() override {}
 
 		const QString& getArtistId() const { return artistId; }
-		const QString getUniqueId() const override { return artistId + getId(); }
+		const QString& getDir() const { return dir; }
+		const QString getUniqueId() const override { return dir + getId(); }
 		const QString& getTitleSub() const { return titleSub; }
 		int getCategory() { return category; }
 
 	private:
 		QString artistId;
+		QString dir;
 		QString titleSub;
 		int category;
 	};
@@ -154,7 +156,7 @@ public:
 	QList<Song> songs(const QModelIndexList& list, bool allowPlaylists) const;
 	QStringList filenames(const QModelIndexList& list, bool allowPlaylists) const;
 	QModelIndex findSongIndex(const Song& song);
-	QModelIndex findAlbumIndex(const QString& artist, const QString& album);
+	QModelIndex findAlbumIndex(const QString& artist, const QString& album, const QString& dir = QString());
 	QModelIndex findArtistIndex(const QString& artist);
 	QSet<QString> getGenres() const;
 	QSet<QString> getArtists() const;

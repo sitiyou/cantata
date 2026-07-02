@@ -46,7 +46,7 @@ public:
 #endif
 	void showSongs(const QList<Song>& songs);
 	void showArtist(const QString& artist);
-	void showAlbum(const QString& artist, const QString& album);
+	void showAlbum(const QString& artist, const QString& album, const QString& dir = QString());
 
 private:
 	void setItemSize(int v);

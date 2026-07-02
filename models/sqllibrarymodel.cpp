@@ -248,9 +248,9 @@ void SqlLibraryModel::libraryUpdated()
 				}
 
 				QString trackInfo = tr("%n Tracks (%1)", "", album.trackCount).arg(Utils::formatTime(album.duration, true));
-				root->add(new AlbumItem(T_Album == tl && album.identifyById ? QString() : album.artist,
-				                        album.id, Song::displayAlbum(album.name, album.year),
-				                        T_Album == tl ? album.artist : trackInfo, T_Album == tl ? trackInfo : QString(), root, cat));
+			root->add(new AlbumItem(T_Album == tl ? album.artist : QString(),
+			                        album.id, Song::displayAlbum(album.name, album.year),
+			                        T_Album == tl ? album.artist : trackInfo, T_Album == tl ? trackInfo : QString(), root, cat, album.dir));
 			}
 		}
 		break;
@@ -369,10 +369,24 @@ void SqlLibraryModel::fetchMore(const QModelIndex& index)
 		break;
 	}
 	case T_Album: {
-		QList<Song> songs = T_Album == tl
-				? db->getTracks(static_cast<AlbumItem*>(item)->getArtistId(), item->getId(), QString(), albumSort)
-				: db->getTracks(item->getParent()->getId(), item->getId(),
-		                        T_Genre == tl ? item->getParent()->getParent()->getId() : QString(), librarySort);
+		QList<Song> songs;
+		if (T_Album == tl) {
+			QString d = static_cast<AlbumItem*>(item)->getDir();
+			QList<Song> allSongs = db->getTracks(QString(), item->getId(), QString(), albumSort);
+			for (const Song& s : allSongs) {
+				if (Utils::getDir(s.file) == d) {
+					songs.append(s);
+				}
+			}
+			std::sort(songs.begin(), songs.end(), [](const Song& a, const Song& b) {
+				if (a.disc != b.disc) return a.disc < b.disc;
+				if (a.track != b.track) return a.track < b.track;
+				return Utils::compare(a.file, b.file) < 0;
+			});
+		} else {
+			songs = db->getTracks(item->getParent()->getId(), item->getId(),
+		                          T_Genre == tl ? item->getParent()->getParent()->getId() : QString(), librarySort);
+		}
 
 		if (!songs.isEmpty()) {
 			beginInsertRows(index, 0, songs.count() - 1);
@@ -436,7 +450,16 @@ QVariant SqlLibraryModel::data(const QModelIndex& index, int role) const
 		if (T_Track == item->getType()) {
 			return static_cast<TrackItem*>(item)->getSong().toolTip();
 		}
-		return parentData(item) + (0 == item->getChildCount() ? item->getText() : (item->getText() + "<br/>" + data(index, Cantata::Role_SubText).toString()));
+		{
+			QString tooltip = parentData(item) + (0 == item->getChildCount() ? item->getText() : (item->getText() + "<br/>" + data(index, Cantata::Role_SubText).toString()));
+			if (T_Album == item->getType()) {
+				QString dir = static_cast<AlbumItem*>(item)->getDir();
+				if (!dir.isEmpty()) {
+					tooltip += "<br/><br/><i>" + dir + "</i>";
+				}
+			}
+			return tooltip;
+		}
 	case Cantata::Role_TitleSubText:
 		if (T_Album == tl && T_Album == item->getType()) {
 			return static_cast<AlbumItem*>(item)->getTitleSub();
@@ -512,7 +535,7 @@ QStringList SqlLibraryModel::filenames(const QModelIndexList& list, bool allowPl
 QModelIndex SqlLibraryModel::findSongIndex(const Song& song)
 {
 	if (root) {
-		QModelIndex albumIndex = findAlbumIndex(song.albumArtistOrComposer(), song.albumId());
+		QModelIndex albumIndex = findAlbumIndex(song.albumArtistOrComposer(), song.albumId(), Utils::getDir(song.file));
 		if (albumIndex.isValid()) {
 			if (canFetchMore(albumIndex)) {
 				fetchMore(albumIndex);
@@ -538,12 +561,12 @@ QModelIndex SqlLibraryModel::findSongIndex(const Song& song)
 	return QModelIndex();
 }
 
-QModelIndex SqlLibraryModel::findAlbumIndex(const QString& artist, const QString& album)
+QModelIndex SqlLibraryModel::findAlbumIndex(const QString& artist, const QString& album, const QString& dir)
 {
 	if (root) {
 		if (T_Album == tl) {
 			for (Item* a : root->getChildren()) {
-				if (a->getId() == album && static_cast<AlbumItem*>(a)->getArtistId() == artist) {
+				if (a->getId() == album && (dir.isEmpty() || static_cast<AlbumItem*>(a)->getDir() == dir)) {
 					return index(a->getRow(), 0, QModelIndex());
 				}
 			}

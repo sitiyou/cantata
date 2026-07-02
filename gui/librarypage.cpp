@@ -253,10 +253,10 @@ void LibraryPage::showArtist(const QString& artist)
 	}
 }
 
-void LibraryPage::showAlbum(const QString& artist, const QString& album)
+void LibraryPage::showAlbum(const QString& artist, const QString& album, const QString& dir)
 {
 	view->clearSearchText();
-	QModelIndex idx = MpdLibraryModel::self()->findAlbumIndex(artist, album);
+	QModelIndex idx = MpdLibraryModel::self()->findAlbumIndex(artist, album, dir);
 	if (idx.isValid()) {
 		view->showIndex(idx, true);
 		if (ItemView::Mode_SimpleTree == view->viewMode() || ItemView::Mode_DetailedTree == view->viewMode()) {

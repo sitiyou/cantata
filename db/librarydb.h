@@ -101,6 +101,7 @@ public:
 		QString sort;
 		QString artist;
 		QString artistSort;
+		QString dir;
 		int year;
 		int trackCount;
 		int duration;

@@ -760,7 +760,7 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 	if (0 != currentVersion && db) {
 		bool wantModified = AS_Modified == sort;
 		bool wantArtist = artistId.isEmpty();
-		QString queryString = "album, albumId, albumSort, artist, albumArtist, composer";
+		QString queryString = "album, albumId, albumSort, artist, albumArtist, composer, file";
 		for (int i = 0; i < Song::constNumGenres; ++i) {
 			queryString += ", genre" + QString::number(i + 1);
 		}
@@ -785,7 +785,6 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 		query.exec();
 		int count = 0;
 		QMap<QString, Album> entries;
-		QMap<QString, QSet<QString>> albumIdArtists;// Map of albumId -> albumartists/composers
 		while (query.next()) {
 			count++;
 			int col = 0;
@@ -797,6 +796,8 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 			s.artist = query.value(col++).toString();
 			s.albumartist = query.value(col++).toString();
 			s.setComposer(query.value(col++).toString());
+			QString file = query.value(col++).toString();
+			s.file = file;
 			s.album = album.isEmpty() ? albumId : album;
 			for (int i = 0; i < Song::constNumGenres; ++i) {
 				QString genre = query.value(col++).toString();
@@ -817,15 +818,15 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 			int lastModified = wantModified ? query.value(col++).toInt() : 0;
 			QString artist = wantArtist ? query.value(col++).toString() : QString();
 			QString artistSort = wantArtist ? query.value(col++).toString() : QString();
-			// If listing albums not filtered on artist, then if we have a unqique id for the album use that.
-			// This will allow us to grouup albums with different composers when the composer tweak is set
-			// Issue #1025
-			bool haveUniqueId = wantArtist && !albumId.isEmpty() && !album.isEmpty() && albumId != album;
-			QString key = haveUniqueId ? albumId : ('{' + albumId + "}{" + (wantArtist ? artist : artistId) + '}');
+			// Group albums by albumId + directory
+			QString dir = Utils::getDir(file);
+			QString key = '{' + albumId + "}{" + dir + '}';
 			QMap<QString, Album>::iterator it = entries.find(key);
 
 			if (it == entries.end()) {
-				entries.insert(key, Album(album.isEmpty() ? albumId : album, albumId, albumSort, artist, artistSort, s.displayYear(), 1, time, lastModified, haveUniqueId));
+				Album al(album.isEmpty() ? albumId : album, albumId, albumSort, artist, artistSort, s.displayYear(), 1, time, lastModified, false);
+				al.dir = dir;
+				entries.insert(key, al);
 			}
 			else {
 				Album& al = it.value();
@@ -835,27 +836,6 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 				al.year = qMax(al.year, (int)s.displayYear());
 				al.duration += time;
 				al.trackCount++;
-			}
-			if (haveUniqueId) {
-				QMap<QString, QSet<QString>>::iterator aIt = albumIdArtists.find(key);
-				if (aIt == albumIdArtists.end()) {
-					albumIdArtists.insert(key, QSet<QString>() << artist);
-				}
-				else {
-					aIt.value().insert(artist);
-				}
-			}
-		}
-
-		QMap<QString, QSet<QString>>::ConstIterator aIt = albumIdArtists.constBegin();
-		QMap<QString, QSet<QString>>::ConstIterator aEnd = albumIdArtists.constEnd();
-		for (; aIt != aEnd; ++aIt) {
-			if (aIt.value().count() > 1) {
-				QStringList artists = aIt.value().values();
-				artists.sort();
-				Album& al = entries.find(aIt.key()).value();
-				al.artist = artists.join(", ");
-				al.artistSort = QString();
 			}
 		}
 
