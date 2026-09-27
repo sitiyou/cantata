@@ -1569,11 +1569,12 @@ void MPDConnection::getCover(const Song& song)
 	QByteArray imageData;
 	bool firstRun = true;
 	QString path = Utils::getDir(song.file);
+	QString file = song.isFromCue() ? CueFile::getPath(song.file) : song.file;
 	bool embedded = false;
 	while (dataToRead != 0) {
 		Response response;
 		if (embedded) {
-			response = sendCommand("readpicture " + encodeName(song.file) + " " + QByteArray::number(firstRun ? 0 : (imageSize - dataToRead)));
+			response = sendCommand("readpicture " + encodeName(file) + " " + QByteArray::number(firstRun ? 0 : (imageSize - dataToRead)));
 		}
 		else {
 			response = sendCommand("albumart " + encodeName(path) + " " + QByteArray::number(firstRun ? 0 : (imageSize - dataToRead)));
@@ -2374,7 +2375,42 @@ bool MPDConnection::recursivelyListDir(const QString& dir, QList<Song>& songs)
 	if (response.ok) {
 		QStringList subDirs;
 		QList<Song> dirSongs;
-		MPDParseUtils::parseDirItems(response.data, details.dir, ver, dirSongs, dir, subDirs, MPDParseUtils::Loc_Library);
+		QList<Song> embeddedCues;
+		MPDParseUtils::parseDirItems(response.data, details.dir, ver, dirSongs, dir, subDirs, MPDParseUtils::Loc_Library, &embeddedCues);
+		for (const Song& cue : embeddedCues) {
+			QList<Song> cueSongs;
+			Response cueResponse = sendCommand("listplaylistinfo " + encodeName(cue.file), false, false);
+			if (cueResponse.ok) {
+				cueSongs = MPDParseUtils::parseSongs(cueResponse.data, MPDParseUtils::Loc_Library);
+			}
+			if (cueSongs.isEmpty()) {
+				continue;
+			}
+			// Replace the container file with the tracks of its embedded cue sheet.
+			for (int i = dirSongs.count() - 1; i >= 0; --i) {
+				if (dirSongs.at(i).file == cue.file && Song::Playlist != dirSongs.at(i).type) {
+					dirSongs.removeAt(i);
+				}
+			}
+			for (int i = 0; i < cueSongs.count(); ++i) {
+				Song s = cueSongs.at(i);
+				s.file = CueFile::buildUri(cue.file, i);
+				if (s.artist.isEmpty()) {
+					s.artist = cue.artist;
+				}
+				if (s.albumartist.isEmpty()) {
+					s.albumartist = cue.albumartist;
+				}
+				if (s.album.isEmpty()) {
+					s.album = cue.album;
+				}
+				if (0 == s.year) {
+					s.year = cue.year;
+				}
+				s.fillEmptyFields();
+				dirSongs.append(s);
+			}
+		}
 		// If we have only 1 sug dir and its ".cue" then this is (probably) MPD's trat CUE as a directory
 		// therefore we ignore any files in this directory as they will be the source files of the CUE
 		if (1 != subDirs.size() || !subDirs.at(0).endsWith(".cue")) {

@@ -630,7 +630,7 @@ MPDParseUtils::MessageMap MPDParseUtils::parseMessages(const QByteArray& data)
 	return messages;
 }
 
-void MPDParseUtils::parseDirItems(const QByteArray& data, const QString& mpdDir, long mpdVersion, QList<Song>& songList, const QString& dir, QStringList& subDirs, Location loc)
+void MPDParseUtils::parseDirItems(const QByteArray& data, const QString& mpdDir, long mpdVersion, QList<Song>& songList, const QString& dir, QStringList& subDirs, Location loc, QList<Song>* embeddedCues)
 {
 	QList<QByteArray> currentItem;
 	QList<QByteArray> lines = data.split('\n');
@@ -663,6 +663,22 @@ void MPDParseUtils::parseDirItems(const QByteArray& data, const QString& mpdDir,
 					// In Folders/Browse, we can list all playlists
 					if (Loc_Browse == loc) {
 						songs.append(currentSong);
+					}
+					else if (Loc_Library == loc && embeddedCues) {
+						// MPD announces an embedded cue sheet as both a "file" and
+						// a "playlist" with the same URI. Collect the container so
+						// that the caller can expand it via "listplaylistinfo".
+						for (const Song& s : songs) {
+							if (s.file == currentSong.file) {
+								Song container = currentSong;
+								container.artist = s.artist;
+								container.albumartist = s.albumartist;
+								container.album = s.album;
+								container.year = s.year;
+								embeddedCues->append(container);
+								break;
+							}
+						}
 					}
 					// Only add CUE files to library listing...
 					continue;

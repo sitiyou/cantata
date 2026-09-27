@@ -87,7 +87,7 @@ extern QList<IdPos> parseChanges(const QByteArray& data);
 extern QStringList parseList(const QByteArray& data, const QByteArray& key);
 typedef QMap<QByteArray, QStringList> MessageMap;
 extern MessageMap parseMessages(const QByteArray& data);
-extern void parseDirItems(const QByteArray& data, const QString& mpdDir, long mpdVersion, QList<Song>& songList, const QString& dir, QStringList& subDirs, Location loc);
+extern void parseDirItems(const QByteArray& data, const QString& mpdDir, long mpdVersion, QList<Song>& songList, const QString& dir, QStringList& subDirs, Location loc, QList<Song>* embeddedCues = nullptr);
 extern QList<Partition> parsePartitions(const QByteArray& data);
 extern QList<Output> parseOuputs(const QByteArray& data);
 extern QByteArray parseSticker(const QByteArray& data, const QByteArray& sticker);

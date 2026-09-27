@@ -116,7 +116,7 @@ QString Utils::tildaToHome(const QString& s)
 
 QString Utils::getDir(const QString& file, bool addSlash)
 {
-	bool isCueFile = file.contains("/cue:///") && file.contains("?pos=");
+	bool isCueFile = file.contains("cue:///") && file.contains("?pos=");
 	QString d(file);
 	int slashPos(d.lastIndexOf(constDirSep));
 

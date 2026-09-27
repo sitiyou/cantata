@@ -70,6 +70,21 @@ bool CueFile::isCue(const QString& str)
 	return str.startsWith(constCueProtocol);
 }
 
+QString CueFile::buildUri(const QString& file, int pos)
+{
+	return constCueProtocol + file + QLatin1String("?pos=") + QString::number(pos);
+}
+
+QString CueFile::getPath(const QString& str)
+{
+	QUrl u(str);
+	QString path = u.path();
+	if (path.startsWith("/")) {
+		path = path.mid(1);
+	}
+	return path;
+}
+
 QByteArray CueFile::getLoadLine(const QString& str)
 {
 	QUrl u(str);
@@ -77,11 +92,7 @@ QByteArray CueFile::getLoadLine(const QString& str)
 
 	if (q.hasQueryItem("pos")) {
 		QString pos = q.queryItemValue("pos");
-		QString path = u.path();
-		if (path.startsWith("/")) {
-			path = path.mid(1);
-		}
-		return MPDConnection::encodeName(path) + " \"" + pos.toLatin1() + ":" + QString::number(pos.toInt() + 1).toLatin1() + "\"";
+		return MPDConnection::encodeName(getPath(str)) + " \"" + pos.toLatin1() + ":" + QString::number(pos.toInt() + 1).toLatin1() + "\"";
 	}
 
 	return MPDConnection::encodeName(str);
