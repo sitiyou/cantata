@@ -388,6 +388,40 @@ static QString albumSort(const Song& s)
 	return Song::sortString(s.album);
 }
 
+static bool containsCjk(const QString& str)
+{
+	for (const QChar ch : str) {
+		switch (ch.script()) {
+		case QChar::Script_Han:
+		case QChar::Script_Hiragana:
+		case QChar::Script_Katakana:
+		case QChar::Script_Hangul:
+			return true;
+		default:
+			break;
+		}
+	}
+	return false;
+}
+
+// unicode61 treats a run of CJK characters as a single token, so the prefix
+// query built by LibraryDb::setFilter cannot match a term inside one; use
+// substring LIKE for CJK terms instead.
+static QString likePattern(const QString& token)
+{
+	QString pattern;
+	pattern.reserve(token.length() + 2);
+	pattern += QLatin1Char('%');
+	for (const QChar ch : token) {
+		if (QLatin1Char('\\') == ch || QLatin1Char('%') == ch || QLatin1Char('_') == ch) {
+			pattern += QLatin1Char('\\');
+		}
+		pattern += ch;
+	}
+	pattern += QLatin1Char('%');
+	return pattern;
+}
+
 // Code taken from Clementine's LibraryQuery
 class SqlQuery {
 public:
@@ -432,9 +466,25 @@ public:
 		}
 	}
 
-	void setFilter(const QString& filter, const QString yearFilter)
+	void setFilter(const QString& filter, const QStringList& likePatterns, const QString yearFilter)
 	{
-		if (!filter.isEmpty()) {
+		if (!likePatterns.isEmpty()) {
+			static const QStringList columns = QStringList() << QLatin1String("artist") << QLatin1String("albumArtist")
+															 << QLatin1String("composer") << QLatin1String("album")
+															 << QLatin1String("albumId") << QLatin1String("title");
+			for (const QString& pattern : likePatterns) {
+				QStringList clauses;
+				for (const QString& column : columns) {
+					clauses << column + QLatin1String(" LIKE ? ESCAPE '\\'");
+					boundValues << pattern;
+				}
+				QString clause = QLatin1String("(");
+				clause += clauses.join(QLatin1String(" OR "));
+				clause += QLatin1String(")");
+				whereClauses << clause;
+			}
+		}
+		else if (!filter.isEmpty()) {
 			whereClauses << "songs_fts match ?";
 			boundValues << "\'" + filter + "\'";
 			fts = true;
@@ -688,7 +738,7 @@ QList<LibraryDb::Genre> LibraryDb::getGenres()
 		}
 		queryStr += "artistId";
 		SqlQuery query(queryStr, *db);
-		query.setFilter(filter, yearFilter);
+		query.setFilter(filter, filterLikePatterns, yearFilter);
 
 		query.exec();
 		DBUG << query.executedQuery();
@@ -723,7 +773,7 @@ QList<LibraryDb::Artist> LibraryDb::getArtists(const QString& genre)
 	QMap<QString, int> albumMap;
 	if (0 != currentVersion && db) {
 		SqlQuery query("distinct artistId, albumId, artistSort", *db);
-		query.setFilter(filter, yearFilter);
+		query.setFilter(filter, filterLikePatterns, yearFilter);
 		if (!genre.isEmpty()) {
 			query.addWhere("genre", genre);
 		}
@@ -772,7 +822,7 @@ QList<LibraryDb::Album> LibraryDb::getAlbums(const QString& artistId, const QStr
 			queryString += ", artistId, artistSort";
 		}
 		SqlQuery query(queryString, *db);
-		query.setFilter(filter, yearFilter);
+		query.setFilter(filter, filterLikePatterns, yearFilter);
 		if (!artistId.isEmpty()) {
 			query.addWhere("artistId", artistId);
 		}
@@ -883,7 +933,7 @@ QList<Song> LibraryDb::getTracks(const QString& artistId, const QString& albumId
 	if (0 != currentVersion && db) {
 		SqlQuery query("*", *db);
 		if (useFilter) {
-			query.setFilter(filter, yearFilter);
+			query.setFilter(filter, filterLikePatterns, yearFilter);
 		}
 		if (!artistId.isEmpty()) {
 			query.addWhere("artistId", artistId);
@@ -1158,11 +1208,13 @@ bool LibraryDb::setFilter(const QString& f, const QString& genre)
 {
 	QString newFilter = f.trimmed().toLower();
 	QString year;
+	QStringList likePatterns;
 	if (!f.isEmpty()) {
 		QStringList strings(newFilter.split(longStringRegex));
 		static QList<QLatin1Char> replaceChars = QList<QLatin1Char>() << QLatin1Char('(') << QLatin1Char(')') << QLatin1Char('"')
 																	  << QLatin1Char(':') << QLatin1Char('-') << QLatin1Char('#');
 		QStringList tokens;
+		bool cjk = containsCjk(newFilter);
 		for (QString str : strings) {
 			if (str.startsWith('#')) {
 				QStringList parts = str.mid(1).split('-');
@@ -1194,18 +1246,23 @@ bool LibraryDb::setFilter(const QString& f, const QString& genre)
 					}
 				}
 			}
+			QString raw = str;
 			for (const QLatin1Char ch : replaceChars) {
 				str.replace(ch, '?');
 			}
 			if (str.length() > 0) {
 				tokens.append(str + QLatin1String("*"));
+				if (cjk) {
+					likePatterns.append(likePattern(raw));
+				}
 			}
 		}
 		newFilter = tokens.join(" ");
 		DBUG << newFilter;
 	}
-	bool modified = newFilter != filter || genre != genreFilter || year != yearFilter;
+	bool modified = newFilter != filter || likePatterns != filterLikePatterns || genre != genreFilter || year != yearFilter;
 	filter = newFilter;
+	filterLikePatterns = likePatterns;
 	genreFilter = genre;
 	yearFilter = year;
 	return modified;

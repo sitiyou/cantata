@@ -162,6 +162,7 @@ protected:
 	QSqlQuery* insertSongQuery;
 	QElapsedTimer timer;
 	QString filter;
+	QStringList filterLikePatterns;
 	QString genreFilter;
 	QString yearFilter;
 	QMap<QString, QSet<QString>> detailsCache;
